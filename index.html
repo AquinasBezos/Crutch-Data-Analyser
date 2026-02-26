@@ -443,8 +443,8 @@
         async function main() {
             // Load CSV data
             const [accelText, rotText] = await Promise.all([
-                fetch('../Accel first walk.csv').then(r => r.text()),
-                fetch('../rotation first walk.csv').then(r => r.text())
+                fetch('./Accel first walk.csv').then(r => r.text()),
+                fetch('./rotation first walk.csv').then(r => r.text())
             ]);
 
             const accelData = parseCSV(accelText);
