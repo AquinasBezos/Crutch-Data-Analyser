@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crutch Motion Visualiser</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* Loading overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0a0a0f;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        #loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(99, 102, 241, 0.2);
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-text {
+            margin-top: 16px;
+            font-size: 14px;
+            color: #888;
+            letter-spacing: 0.5px;
+        }
+
+        /* Controls panel */
+        #controls {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 15, 25, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 16px;
+            padding: 16px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 600px;
+            max-width: 800px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .controls-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Buttons */
+        .btn {
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #c7c8ff;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-width: 40px;
+            height: 36px;
+        }
+
+        .btn:hover {
+            background: rgba(99, 102, 241, 0.3);
+            border-color: rgba(99, 102, 241, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.active {
+            background: rgba(99, 102, 241, 0.4);
+            border-color: #6366f1;
+            color: #fff;
+        }
+
+        .btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        /* Timeline slider */
+        .timeline-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #timeline {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            background: rgba(99, 102, 241, 0.15);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        #timeline::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #6366f1;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
+            transition: transform 0.15s ease;
+        }
+
+        #timeline::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        #timeline::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #6366f1;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .time-display {
+            font-size: 12px;
+            font-weight: 500;
+            color: #aaa;
+            min-width: 100px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Speed selector */
+        #speed-select {
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #c7c8ff;
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            cursor: pointer;
+            outline: none;
+            height: 36px;
+        }
+
+        #speed-select option {
+            background: #1a1a2e;
+            color: #e0e0e0;
+        }
+
+        /* Info panel */
+        #info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 15, 25, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 12px;
+            padding: 16px 20px;
+            z-index: 100;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        #info-panel h2 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #c7c8ff;
+            margin-bottom: 8px;
+        }
+
+        #info-panel .key {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #c7c8ff;
+        }
+
+        /* Data display */
+        #data-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 15, 25, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 12px;
+            padding: 16px 20px;
+            z-index: 100;
+            font-size: 12px;
+            min-width: 220px;
+        }
+
+        #data-panel h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: #c7c8ff;
+            margin-bottom: 6px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            color: #999;
+        }
+
+        .data-row .val {
+            font-variant-numeric: tabular-nums;
+            color: #ccc;
+            font-weight: 500;
+        }
+
+        .section-divider {
+            height: 1px;
+            background: rgba(99, 102, 241, 0.15);
+            margin: 8px 0;
+        }
+
+        /* Axis label colors */
+        .axis-x {
+            color: #ef4444;
+        }
+
+        .axis-y {
+            color: #22c55e;
+        }
+
+        .axis-z {
+            color: #3b82f6;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading sensor data...</div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="info-panel">
+        <h2>🦯 Crutch Motion Visualiser</h2>
+        <div><span class="key">Space</span> Play / Pause</div>
+        <div><span class="key">R</span> Toggle Reverse</div>
+        <div><span class="key">←</span><span class="key">→</span> Step frame</div>
+        <div><span class="key">O</span> Set origin here</div>
+        <div><span class="key">Mouse</span> Orbit camera</div>
+    </div>
+
+    <div id="data-panel">
+        <h3>Gyroscope (rad/s)</h3>
+        <div class="data-row"><span class="axis-x">X (fwd)</span> <span class="val" id="gyro-x">0.000</span></div>
+        <div class="data-row"><span class="axis-y">Y (up)</span> <span class="val" id="gyro-y">0.000</span></div>
+        <div class="data-row"><span class="axis-z">Z (right)</span> <span class="val" id="gyro-z">0.000</span></div>
+        <div class="section-divider"></div>
+        <h3>Accelerometer (g)</h3>
+        <div class="data-row"><span class="axis-x">X (fwd)</span> <span class="val" id="accel-x">0.000</span></div>
+        <div class="data-row"><span class="axis-y">Y (up)</span> <span class="val" id="accel-y">0.000</span></div>
+        <div class="data-row"><span class="axis-z">Z (right)</span> <span class="val" id="accel-z">0.000</span></div>
+    </div>
+
+    <div id="controls">
+        <div class="controls-row">
+            <button class="btn" id="btn-reverse" title="Reverse (R)">
+                <svg viewBox="0 0 24 24">
+                    <path d="M19 12L5 12M5 12L11 18M5 12L11 6" stroke="currentColor" stroke-width="2" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+            <button class="btn" id="btn-step-back" title="Step Back (←)">
+                <svg viewBox="0 0 24 24">
+                    <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+            </button>
+            <button class="btn active" id="btn-play" title="Play/Pause (Space)">
+                <svg viewBox="0 0 24 24" id="play-icon">
+                    <polygon points="5,3 19,12 5,21" />
+                </svg>
+            </button>
+            <button class="btn" id="btn-step-fwd" title="Step Forward (→)">
+                <svg viewBox="0 0 24 24">
+                    <path d="M9 6L15 12L9 18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+            </button>
+            <button class="btn" id="btn-set-origin" title="Set Origin (O)">
+                <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2" fill="none" />
+                    <line x1="12" y1="7" x2="12" y2="17" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" />
+                    <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" />
+                </svg>
+            </button>
+            <select id="speed-select" title="Playback Speed">
+                <option value="0.1">0.1×</option>
+                <option value="0.25">0.25×</option>
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+            </select>
+            <div class="timeline-container">
+                <input type="range" id="timeline" min="0" max="1000" value="0" step="1">
+            </div>
+            <div class="time-display" id="time-display">0.00s / 0.00s</div>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // ============================================================
+        // DATA LOADING & PARSING
+        // ============================================================
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(',');
+                if (parts.length >= 4) {
+                    data.push({
+                        t: parseFloat(parts[0]),
+                        x: parseFloat(parts[1]),
+                        y: parseFloat(parts[2]),
+                        z: parseFloat(parts[3])
+                    });
+                }
+            }
+            return data;
+        }
+
+        // Interpolate data at a given normalised time t
+        function sampleAtTime(data, timestamps, t) {
+            if (t <= timestamps[0]) return { x: data[0].x, y: data[0].y, z: data[0].z };
+            if (t >= timestamps[timestamps.length - 1]) {
+                const last = data[data.length - 1];
+                return { x: last.x, y: last.y, z: last.z };
+            }
+
+            // Binary search for bracket
+            let lo = 0, hi = timestamps.length - 1;
+            while (lo < hi - 1) {
+                const mid = (lo + hi) >> 1;
+                if (timestamps[mid] <= t) lo = mid;
+                else hi = mid;
+            }
+
+            const dt = timestamps[hi] - timestamps[lo];
+            const alpha = dt > 0 ? (t - timestamps[lo]) / dt : 0;
+            return {
+                x: data[lo].x + alpha * (data[hi].x - data[lo].x),
+                y: data[lo].y + alpha * (data[hi].y - data[lo].y),
+                z: data[lo].z + alpha * (data[hi].z - data[lo].z)
+            };
+        }
+
+        // ============================================================
+        // MAIN APPLICATION
+        // ============================================================
+        async function main() {
+            // Load CSV data
+            const [accelText, rotText] = await Promise.all([
+                fetch('../Accel first walk.csv').then(r => r.text()),
+                fetch('../rotation first walk.csv').then(r => r.text())
+            ]);
+
+            const accelData = parseCSV(accelText);
+            const rotData = parseCSV(rotText);
+
+            // Normalise timestamps to start at 0
+            const t0 = Math.min(accelData[0].t, rotData[0].t);
+            const accelTimestamps = accelData.map(d => d.t - t0);
+            const rotTimestamps = rotData.map(d => d.t - t0);
+            const totalDuration = Math.max(
+                accelTimestamps[accelTimestamps.length - 1],
+                rotTimestamps[rotTimestamps.length - 1]
+            );
+
+            // Pre-integrate orientation from gyroscope data
+            // We'll compute a quaternion for each gyro sample
+            const orientations = []; // Array of THREE.Quaternion
+            let currentQuat = new THREE.Quaternion(); // start identity (crutch vertical)
+            orientations.push(currentQuat.clone());
+
+            for (let i = 1; i < rotData.length; i++) {
+                const dt = rotTimestamps[i] - rotTimestamps[i - 1];
+                if (dt <= 0 || dt > 1) {
+                    orientations.push(currentQuat.clone());
+                    continue;
+                }
+
+                // Average angular velocity between samples
+                const wx = (rotData[i - 1].x + rotData[i].x) * 0.5;
+                const wy = (rotData[i - 1].y + rotData[i].y) * 0.5;
+                const wz = (rotData[i - 1].z + rotData[i].z) * 0.5;
+
+                // Rotation angle and axis
+                const angle = Math.sqrt(wx * wx + wy * wy + wz * wz) * dt;
+                if (angle > 1e-8) {
+                    const axis = new THREE.Vector3(wx, wy, wz).normalize();
+                    const dq = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+                    currentQuat = currentQuat.clone().multiply(dq);
+                    currentQuat.normalize();
+                }
+                orientations.push(currentQuat.clone());
+            }
+
+            // Pre-integrate position from accelerometer data
+            // Double integration with drift damping
+            // NOTE: Accel data has gravity already removed, so we integrate directly
+            const positions = [];
+            const G = 9.81;
+            let vel = new THREE.Vector3(0, 0, 0);
+            let pos = new THREE.Vector3(0, 0, 0);
+            const velocityDamping = 0.95; // Stronger damping to fight drift
+            positions.push(pos.clone());
+
+            for (let i = 1; i < accelData.length; i++) {
+                const dt = accelTimestamps[i] - accelTimestamps[i - 1];
+                if (dt <= 0 || dt > 1) {
+                    positions.push(pos.clone());
+                    continue;
+                }
+
+                // Get interpolated orientation at this accel timestamp
+                const qi = getQuatAtTime(accelTimestamps[i], rotTimestamps, orientations);
+
+                // Acceleration in body frame (in g) — gravity already removed
+                const accelBody = new THREE.Vector3(
+                    accelData[i].x,
+                    accelData[i].y,
+                    accelData[i].z
+                );
+
+                // Rotate to world frame and convert from g to m/s²
+                const accelWorld = accelBody.applyQuaternion(qi).multiplyScalar(G);
+
+                // Integrate velocity & position
+                vel.add(accelWorld.clone().multiplyScalar(dt));
+                vel.multiplyScalar(velocityDamping); // drift damping
+                pos.add(vel.clone().multiplyScalar(dt));
+
+                positions.push(pos.clone());
+            }
+
+            function getQuatAtTime(t, timestamps, quats) {
+                if (t <= timestamps[0]) return quats[0].clone();
+                if (t >= timestamps[timestamps.length - 1]) return quats[quats.length - 1].clone();
+
+                let lo = 0, hi = timestamps.length - 1;
+                while (lo < hi - 1) {
+                    const mid = (lo + hi) >> 1;
+                    if (timestamps[mid] <= t) lo = mid;
+                    else hi = mid;
+                }
+
+                const dt = timestamps[hi] - timestamps[lo];
+                const alpha = dt > 0 ? (t - timestamps[lo]) / dt : 0;
+                return quats[lo].clone().slerp(quats[hi], alpha);
+            }
+
+            function getPositionAtTime(t, timestamps, posArr) {
+                if (t <= timestamps[0]) return posArr[0].clone();
+                if (t >= timestamps[timestamps.length - 1]) return posArr[posArr.length - 1].clone();
+
+                let lo = 0, hi = timestamps.length - 1;
+                while (lo < hi - 1) {
+                    const mid = (lo + hi) >> 1;
+                    if (timestamps[mid] <= t) lo = mid;
+                    else hi = mid;
+                }
+
+                const dt = timestamps[hi] - timestamps[lo];
+                const alpha = dt > 0 ? (t - timestamps[lo]) / dt : 0;
+                return posArr[lo].clone().lerp(posArr[hi], alpha);
+            }
+
+            // ============================================================
+            // THREE.JS SCENE SETUP
+            // ============================================================
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+
+            // Gradient background
+            const bgCanvas = document.createElement('canvas');
+            bgCanvas.width = 2;
+            bgCanvas.height = 512;
+            const bgCtx = bgCanvas.getContext('2d');
+            const grad = bgCtx.createLinearGradient(0, 0, 0, 512);
+            grad.addColorStop(0, '#1a1a2e');
+            grad.addColorStop(0.5, '#16162a');
+            grad.addColorStop(1, '#0f0f1a');
+            bgCtx.fillStyle = grad;
+            bgCtx.fillRect(0, 0, 2, 512);
+            const bgTexture = new THREE.CanvasTexture(bgCanvas);
+            scene.background = bgTexture;
+
+            const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 100);
+            camera.position.set(1.0, 0.8, 1.2);
+            camera.lookAt(0, 0.5, 0);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 0.5, 0);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.update();
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x606080, 0.8);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(3, 5, 4);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.set(1024, 1024);
+            dirLight.shadow.camera.left = -3;
+            dirLight.shadow.camera.right = 3;
+            dirLight.shadow.camera.top = 3;
+            dirLight.shadow.camera.bottom = -3;
+            scene.add(dirLight);
+
+            const fillLight = new THREE.DirectionalLight(0x6366f1, 0.3);
+            fillLight.position.set(-2, 3, -2);
+            scene.add(fillLight);
+
+            // Floor grid
+            const gridHelper = new THREE.GridHelper(10, 20, 0x333355, 0x222244);
+            scene.add(gridHelper);
+
+            // Floor plane (for shadows)
+            const floorGeo = new THREE.PlaneGeometry(10, 10);
+            const floorMat = new THREE.ShadowMaterial({ opacity: 0.3 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Axis helper at origin
+            const axesHelper = new THREE.AxesHelper(0.3);
+            scene.add(axesHelper);
+
+            // ============================================================
+            // BUILD CRUTCH MODEL
+            // ============================================================
+            const crutchGroup = new THREE.Group();
+            scene.add(crutchGroup);
+
+            // Materials
+            const shaftMat = new THREE.MeshStandardMaterial({
+                color: 0xb0b8c0,
+                metalness: 0.7,
+                roughness: 0.3
+            });
+            const tipMat = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                roughness: 0.9
+            });
+            const gripMat = new THREE.MeshStandardMaterial({
+                color: 0x555555,
+                roughness: 0.7
+            });
+            const cuffMat = new THREE.MeshStandardMaterial({
+                color: 0x444444,
+                roughness: 0.6
+            });
+            const phoneMat = new THREE.MeshStandardMaterial({
+                color: 0xdd2222,
+                roughness: 0.4,
+                metalness: 0.1
+            });
+
+            // Main shaft: ~1.2m tall, 2.5cm diameter
+            const shaftGeo = new THREE.CylinderGeometry(0.0125, 0.0125, 1.2, 16);
+            const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+            shaft.position.y = 0.6;
+            shaft.castShadow = true;
+            crutchGroup.add(shaft);
+
+            // Add a slightly thicker upper section (adjustable part)
+            const upperShaftGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.35, 16);
+            const upperShaft = new THREE.Mesh(upperShaftGeo, shaftMat);
+            upperShaft.position.y = 1.025;
+            upperShaft.castShadow = true;
+            crutchGroup.add(upperShaft);
+
+            // Rubber tip at bottom
+            const tipGeo = new THREE.CylinderGeometry(0.02, 0.025, 0.05, 12);
+            const tip = new THREE.Mesh(tipGeo, tipMat);
+            tip.position.y = 0.025;
+            crutchGroup.add(tip);
+
+            // Handle grip at ~1.05m, horizontal
+            const gripGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.13, 12);
+            const grip = new THREE.Mesh(gripGeo, gripMat);
+            grip.position.set(0.05, 1.05, 0);
+            grip.rotation.z = Math.PI / 2;
+            grip.castShadow = true;
+            crutchGroup.add(grip);
+
+            // Forearm cuff at ~1.2m
+            const cuffGeo = new THREE.TorusGeometry(0.05, 0.01, 8, 20, Math.PI * 1.3);
+            const cuff = new THREE.Mesh(cuffGeo, cuffMat);
+            cuff.position.set(0, 1.22, 0);
+            cuff.rotation.x = Math.PI / 2;
+            cuff.rotation.z = -Math.PI * 0.15;
+            cuff.castShadow = true;
+            crutchGroup.add(cuff);
+
+            // Cuff support struts
+            const strutGeo = new THREE.CylinderGeometry(0.007, 0.007, 0.07, 8);
+            const strut1 = new THREE.Mesh(strutGeo, shaftMat);
+            strut1.position.set(0.025, 1.185, 0);
+            crutchGroup.add(strut1);
+            const strut2 = new THREE.Mesh(strutGeo, shaftMat);
+            strut2.position.set(-0.025, 1.185, 0);
+            crutchGroup.add(strut2);
+
+            // Phone / IMU cuboid at 1.0m up the shaft
+            // Phone dimensions: ~15cm × 7cm × 0.8cm
+            const phoneGeo = new THREE.BoxGeometry(0.07, 0.15, 0.009);
+            const phone = new THREE.Mesh(phoneGeo, phoneMat);
+            phone.position.set(0.0125 + 0.005 + 0.035, 1.0, 0);
+            phone.castShadow = true;
+            crutchGroup.add(phone);
+
+            // Phone screen detail
+            const screenGeo = new THREE.BoxGeometry(0.055, 0.12, 0.001);
+            const screenMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 });
+            const screen = new THREE.Mesh(screenGeo, screenMat);
+            screen.position.set(0, 0, 0.006);
+            phone.add(screen);
+
+            // ============================================================
+            // PLAYBACK STATE
+            // ============================================================
+            let currentTime = 0;
+            let isPlaying = false;
+            let playDirection = 1; // 1 = forward, -1 = reverse
+            let playbackSpeed = 1;
+            let lastFrameTime = null;
+
+            // UI Elements
+            const btnPlay = document.getElementById('btn-play');
+            const btnReverse = document.getElementById('btn-reverse');
+            const btnStepBack = document.getElementById('btn-step-back');
+            const btnStepFwd = document.getElementById('btn-step-fwd');
+            const timeline = document.getElementById('timeline');
+            const timeDisplay = document.getElementById('time-display');
+            const speedSelect = document.getElementById('speed-select');
+            const playIcon = document.getElementById('play-icon');
+
+            const pauseSVG = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
+            const playSVG = '<polygon points="5,3 19,12 5,21"/>';
+
+            function updatePlayIcon() {
+                playIcon.innerHTML = isPlaying ? pauseSVG : playSVG;
+            }
+
+            function togglePlay() {
+                isPlaying = !isPlaying;
+                updatePlayIcon();
+                if (isPlaying) lastFrameTime = performance.now();
+            }
+
+            function toggleReverse() {
+                playDirection *= -1;
+                btnReverse.classList.toggle('active', playDirection < 0);
+            }
+
+            function stepFrame(dir) {
+                // Step by ~1 sample interval (~0.1s)
+                const stepSize = 0.1;
+                currentTime = Math.max(0, Math.min(totalDuration, currentTime + dir * stepSize));
+                updateScene();
+            }
+
+            btnPlay.addEventListener('click', togglePlay);
+            btnReverse.addEventListener('click', toggleReverse);
+            btnStepBack.addEventListener('click', () => stepFrame(-1));
+            btnStepFwd.addEventListener('click', () => stepFrame(1));
+
+            speedSelect.addEventListener('change', () => {
+                playbackSpeed = parseFloat(speedSelect.value);
+            });
+
+            let isScrubbing = false;
+            timeline.addEventListener('input', () => {
+                isScrubbing = true;
+                currentTime = (parseFloat(timeline.value) / 1000) * totalDuration;
+                updateScene();
+            });
+            timeline.addEventListener('change', () => { isScrubbing = false; });
+            timeline.addEventListener('mousedown', () => { isScrubbing = true; });
+            timeline.addEventListener('mouseup', () => { isScrubbing = false; });
+
+            // Origin offset state
+            let originQuat = new THREE.Quaternion(); // identity = no offset
+            let originPos = new THREE.Vector3(0, 0, 0);
+
+            function setOrigin() {
+                const t = currentTime;
+                originQuat = getQuatAtTime(t, rotTimestamps, orientations);
+                originPos = getPositionAtTime(t, accelTimestamps, positions);
+                const btnOrigin = document.getElementById('btn-set-origin');
+                btnOrigin.classList.add('active');
+                setTimeout(() => btnOrigin.classList.remove('active'), 400);
+                updateScene();
+            }
+
+            document.getElementById('btn-set-origin').addEventListener('click', setOrigin);
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+                if (e.code === 'ArrowLeft') { e.preventDefault(); stepFrame(-1); }
+                if (e.code === 'ArrowRight') { e.preventDefault(); stepFrame(1); }
+                if (e.code === 'KeyR') { toggleReverse(); }
+                if (e.code === 'KeyO') { setOrigin(); }
+            });
+
+            // ============================================================
+            // UPDATE SCENE
+            // ============================================================
+            function updateScene() {
+                const t = currentTime;
+
+                // Get orientation relative to origin
+                const rawQuat = getQuatAtTime(t, rotTimestamps, orientations);
+                const originQuatInv = originQuat.clone().invert();
+                const relQuat = originQuatInv.multiply(rawQuat);
+                crutchGroup.quaternion.copy(relQuat);
+
+                // Get position relative to origin
+                const rawPos = getPositionAtTime(t, accelTimestamps, positions);
+                const relPos = rawPos.clone().sub(originPos);
+                // Rotate the relative position by the inverse origin orientation
+                // so the movement is in the new reference frame
+                relPos.applyQuaternion(originQuat.clone().invert());
+                crutchGroup.position.copy(relPos);
+
+                // Update UI
+                if (!isScrubbing) {
+                    timeline.value = Math.round((t / totalDuration) * 1000);
+                }
+                timeDisplay.textContent = `${t.toFixed(2)}s / ${totalDuration.toFixed(2)}s`;
+
+                // Update data panel
+                const gyroSample = sampleAtTime(rotData, rotTimestamps, t);
+                const accelSample = sampleAtTime(accelData, accelTimestamps, t);
+
+                document.getElementById('gyro-x').textContent = gyroSample.x.toFixed(3);
+                document.getElementById('gyro-y').textContent = gyroSample.y.toFixed(3);
+                document.getElementById('gyro-z').textContent = gyroSample.z.toFixed(3);
+                document.getElementById('accel-x').textContent = accelSample.x.toFixed(3);
+                document.getElementById('accel-y').textContent = accelSample.y.toFixed(3);
+                document.getElementById('accel-z').textContent = accelSample.z.toFixed(3);
+            }
+
+            // ============================================================
+            // ANIMATION LOOP
+            // ============================================================
+            function animate(now) {
+                requestAnimationFrame(animate);
+
+                if (isPlaying && lastFrameTime !== null) {
+                    const elapsed = (now - lastFrameTime) / 1000; // seconds
+                    currentTime += elapsed * playbackSpeed * playDirection;
+
+                    // Clamp
+                    if (currentTime >= totalDuration) {
+                        currentTime = totalDuration;
+                        isPlaying = false;
+                        updatePlayIcon();
+                    }
+                    if (currentTime <= 0) {
+                        currentTime = 0;
+                        isPlaying = false;
+                        updatePlayIcon();
+                    }
+                }
+                lastFrameTime = now;
+
+                updateScene();
+                controls.update();
+                renderer.render(scene, camera);
+            }
+
+            // Handle resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // Hide loading overlay
+            document.getElementById('loading-overlay').classList.add('hidden');
+
+            // Initial update
+            updateScene();
+
+            // Start animation loop
+            requestAnimationFrame(animate);
+        }
+
+        // Run
+        main().catch(err => {
+            console.error('Failed to load:', err);
+            document.querySelector('.loading-text').textContent = 'Error loading data. Make sure to serve via HTTP server.';
+        });
+    </script>
+</body>
+
+</html>
